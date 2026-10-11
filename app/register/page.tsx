@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -7,15 +8,47 @@ import { supabase } from "@/lib/supabase";
 const MAX_SOURCE_SIZE = 8 * 1024 * 1024;
 const MAX_WEBP_SIZE = 2 * 1024 * 1024;
 
-export default function RegisterPage() {
-  const [form, setForm] = useState({
-    full_name: "",
-    email: "",
-    domain: "",
-    position: "",
-    bio: "",
-  });
+const DOMAINS = [
+  "Web Development",
+  "Design",
+  "Logistics",
+  "Operations",
+  "Sponsorship",
+  "Hospitality",
+  "Social Media",
+  "Event Management",
+];
 
+const POSITIONS = ["Head", "Vice-Head", "Core Member", "Member"];
+
+const BRANCHES = [
+  "CSE",
+  "AIML",
+  "ECE",
+  "EEE",
+  "ME",
+  "Biotech",
+  "CSBS",
+  "Other",
+];
+
+const SEMESTERS = ["1", "2", "3", "4", "5", "6", "7", "8"];
+
+const INITIAL_FORM = {
+  full_name: "",
+  domain: "",
+  position: "",
+  srn: "",
+  email: "",
+  linkedin_url: "",
+  github_url: "",
+  branch: "",
+  semester: "",
+  bio: "",
+};
+
+export default function RegisterPage() {
+  const [form, setForm] = useState(INITIAL_FORM);
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [photoPreview, setPhotoPreview] = useState("");
   const [message, setMessage] = useState("");
@@ -24,9 +57,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     return () => {
-      if (photoPreview) {
-        URL.revokeObjectURL(photoPreview);
-      }
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
     };
   }, [photoPreview]);
 
@@ -35,9 +66,11 @@ export default function RegisterPage() {
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
     >
   ) {
+    const { name, value } = e.target;
+
     setForm((previous) => ({
       ...previous,
-      [e.target.name]: e.target.value,
+      [name]: name === "srn" ? value.toUpperCase() : value,
     }));
   }
 
@@ -46,23 +79,14 @@ export default function RegisterPage() {
 
     try {
       const maxDimension = 1200;
-
       const scale = Math.min(
         1,
         maxDimension / Math.max(bitmap.width, bitmap.height)
       );
 
       const canvas = document.createElement("canvas");
-
-      canvas.width = Math.max(
-        1,
-        Math.round(bitmap.width * scale)
-      );
-
-      canvas.height = Math.max(
-        1,
-        Math.round(bitmap.height * scale)
-      );
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
 
       const context = canvas.getContext("2d");
 
@@ -70,22 +94,13 @@ export default function RegisterPage() {
         throw new Error("Could not process this image.");
       }
 
-      context.drawImage(
-        bitmap,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
 
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(
           (result) => {
-            if (result) {
-              resolve(result);
-            } else {
-              reject(new Error("WebP conversion failed."));
-            }
+            if (result) resolve(result);
+            else reject(new Error("WebP conversion failed."));
           },
           "image/webp",
           0.82
@@ -114,7 +129,6 @@ export default function RegisterPage() {
     e: ChangeEvent<HTMLInputElement>
   ) {
     const file = e.target.files?.[0];
-
     if (!file) return;
 
     setMessage("");
@@ -130,13 +144,10 @@ export default function RegisterPage() {
       }
 
       if (file.size > MAX_SOURCE_SIZE) {
-        throw new Error(
-          "The original image must be 8 MB or smaller."
-        );
+        throw new Error("The original image must be 8 MB or smaller.");
       }
 
       const webp = await convertToWebP(file);
-
       setPhoto(webp);
       setPhotoPreview(URL.createObjectURL(webp));
       setMessage("Photo converted to WebP successfully!");
@@ -146,7 +157,6 @@ export default function RegisterPage() {
           ? error.message
           : "Could not process this image."
       );
-
       e.target.value = "";
     } finally {
       setConverting(false);
@@ -177,38 +187,35 @@ export default function RegisterPage() {
           upsert: false,
         });
 
-      if (uploadError) {
-        throw uploadError;
-      }
+      if (uploadError) throw uploadError;
 
       uploadedPath = filePath;
-
       currentStage = "Saving application";
 
       const { error: insertError } = await supabase
         .from("team_members")
         .insert({
-          ...form,
+          full_name: form.full_name.trim(),
+          domain: form.domain,
+          position: form.position,
+          srn: form.srn.trim().toUpperCase(),
+          email: form.email.trim(),
+          linkedin_url: form.linkedin_url.trim(),
+          github_url: form.github_url.trim(),
+          branch: form.branch,
+          semester: Number(form.semester),
+          bio: form.bio.trim(),
           image_url: uploadedPath,
           status: "pending",
         });
 
-      if (insertError) {
-        throw insertError;
-      }
+      if (insertError) throw insertError;
 
       setMessage(
         "Application and photo submitted successfully! Your application is pending admin approval."
       );
 
-      setForm({
-        full_name: "",
-        email: "",
-        domain: "",
-        position: "",
-        bio: "",
-      });
-
+      setForm({ ...INITIAL_FORM });
       setPhoto(null);
       setPhotoPreview("");
 
@@ -216,15 +223,21 @@ export default function RegisterPage() {
         "profile-photo"
       ) as HTMLInputElement | null;
 
-      if (input) {
-        input.value = "";
-      }
+      if (input) input.value = "";
     } catch (error) {
       const details =
         error instanceof Error ? error.message : String(error);
 
+      const isDuplicateSRN =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "23505";
+
       setMessage(
-        `Submission failed during "${currentStage}": ${details}`
+        isDuplicateSRN
+          ? "An application with this SRN already exists. Please check your SRN."
+          : `Submission failed during "${currentStage}": ${details}`
       );
 
       console.error("Registration failed:", {
@@ -232,19 +245,13 @@ export default function RegisterPage() {
         error,
       });
 
-      if (
-        uploadedPath &&
-        currentStage === "Saving application"
-      ) {
+      if (uploadedPath && currentStage === "Saving application") {
         const { error: cleanupError } = await supabase.storage
           .from("team-photos")
           .remove([uploadedPath]);
 
         if (cleanupError) {
-          console.error(
-            "Photo cleanup failed:",
-            cleanupError.message
-          );
+          console.error("Photo cleanup failed:", cleanupError.message);
         }
       }
     } finally {
@@ -254,6 +261,12 @@ export default function RegisterPage() {
 
   const inputClass =
     "w-full rounded-xl border border-white/10 bg-[#0a111e] px-4 py-3.5 text-sm text-white placeholder:text-slate-600 outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/10";
+
+  const labelClass =
+    "mb-2 block text-sm font-medium text-slate-300";
+
+  const sectionClass =
+    "text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300";
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#070b14] text-white">
@@ -267,13 +280,9 @@ export default function RegisterPage() {
 
       <nav className="relative z-10 border-b border-white/[0.08] bg-[#070b14]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 sm:px-10">
-          <a
-            href="/"
-            className="text-xl font-bold tracking-[0.12em]"
-          >
+          <a href="/" className="text-xl font-bold tracking-[0.12em]">
             EMBRIONE<span className="text-cyan-400">.</span>
           </a>
-
           <a
             href="/team"
             className="text-sm text-slate-400 transition hover:text-cyan-300"
@@ -314,59 +323,61 @@ export default function RegisterPage() {
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10 text-xl text-cyan-300">
                 ✳
               </div>
-
               <div>
-                <h2 className="text-xl font-semibold">
-                  Member application
-                </h2>
+                <h2 className="text-xl font-semibold">Member application</h2>
                 <p className="mt-1 text-sm text-slate-400">
                   Fill in your details to apply.
                 </p>
               </div>
             </div>
-
-            <div className="mt-6 flex items-center gap-2 text-xs text-slate-500">
-              <span className="text-cyan-400">*</span>
-              Required fields must be completed.
-            </div>
+            <p className="mt-6 text-xs text-slate-500">
+              <span className="text-cyan-400">*</span> Required fields. Social
+              profile links are optional.
+            </p>
           </div>
 
           <div className="space-y-7 p-6 sm:p-9">
             <section>
-              <p className="mb-5 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
-                01 / About you
-              </p>
+              <p className={sectionClass}>01 / Personal details</p>
 
-              <div className="grid gap-5 sm:grid-cols-2">
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
                 <div>
-                  <label
-                    className="mb-2 block text-sm font-medium text-slate-300"
-                    htmlFor="full_name"
-                  >
-                    Full name <span className="text-cyan-400">*</span>
+                  <label className={labelClass} htmlFor="full_name">
+                    Full name *
                   </label>
-
                   <input
                     id="full_name"
                     name="full_name"
+                    type="text"
                     value={form.full_name}
                     onChange={handleChange}
                     required
-                    placeholder="Enter your full name"
                     autoComplete="name"
+                    placeholder="Enter your full name"
                     className={inputClass}
                   />
                 </div>
 
                 <div>
-                  <label
-                    className="mb-2 block text-sm font-medium text-slate-300"
-                    htmlFor="email"
-                  >
-                    Email address{" "}
-                    <span className="text-cyan-400">*</span>
+                  <label className={labelClass} htmlFor="srn">
+                    SRN *
                   </label>
+                  <input
+                    id="srn"
+                    name="srn"
+                    type="text"
+                    value={form.srn}
+                    onChange={handleChange}
+                    required
+                    placeholder="e.g. PES1UG23CS001"
+                    className={inputClass}
+                  />
+                </div>
 
+                <div className="sm:col-span-2">
+                  <label className={labelClass} htmlFor="email">
+                    Email address *
+                  </label>
                   <input
                     id="email"
                     name="email"
@@ -374,8 +385,8 @@ export default function RegisterPage() {
                     value={form.email}
                     onChange={handleChange}
                     required
-                    placeholder="you@example.com"
                     autoComplete="email"
+                    placeholder="you@example.com"
                     className={inputClass}
                   />
                 </div>
@@ -385,77 +396,163 @@ export default function RegisterPage() {
             <div className="h-px bg-white/[0.07]" />
 
             <section>
-              <p className="mb-5 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
-                02 / Your interests
-              </p>
+              <p className={sectionClass}>02 / Domain and position</p>
 
-              <div className="grid gap-5 sm:grid-cols-2">
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
                 <div>
-                  <label
-                    className="mb-2 block text-sm font-medium text-slate-300"
-                    htmlFor="domain"
-                  >
-                    Domain <span className="text-cyan-400">*</span>
+                  <label className={labelClass} htmlFor="domain">
+                    Domain *
                   </label>
-
                   <select
                     id="domain"
                     name="domain"
                     value={form.domain}
                     onChange={handleChange}
                     required
-                    className={`${inputClass} bg-[#0a111e]`}
+                    className={inputClass}
                   >
                     <option value="">Select your domain</option>
-                    <option value="Technology">Technology</option>
-                    <option value="Design">Design</option>
-                    <option value="Management">Management</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="Content">Content</option>
-                    <option value="Other">Other</option>
+                    {DOMAINS.map((domain) => (
+                      <option key={domain} value={domain}>
+                        {domain}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label
-                    className="mb-2 block text-sm font-medium text-slate-300"
-                    htmlFor="position"
-                  >
-                    Position <span className="text-cyan-400">*</span>
+                  <label className={labelClass} htmlFor="position">
+                    Position *
                   </label>
-
-                  <input
+                  <select
                     id="position"
                     name="position"
                     value={form.position}
                     onChange={handleChange}
                     required
-                    placeholder="e.g. Developer, Designer"
+                    className={inputClass}
+                  >
+                    <option value="">Select your position</option>
+                    {POSITIONS.map((position) => (
+                      <option key={position} value={position}>
+                        {position}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <div className="h-px bg-white/[0.07]" />
+
+            <section>
+              <p className={sectionClass}>03 / Academic details</p>
+
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                <div>
+                  <label className={labelClass} htmlFor="branch">
+                    Branch *
+                  </label>
+                  <select
+                    id="branch"
+                    name="branch"
+                    value={form.branch}
+                    onChange={handleChange}
+                    required
+                    className={inputClass}
+                  >
+                    <option value="">Select your branch</option>
+                    {BRANCHES.map((branch) => (
+                      <option key={branch} value={branch}>
+                        {branch}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className={labelClass} htmlFor="semester">
+                    Semester *
+                  </label>
+                  <select
+                    id="semester"
+                    name="semester"
+                    value={form.semester}
+                    onChange={handleChange}
+                    required
+                    className={inputClass}
+                  >
+                    <option value="">Select your semester</option>
+                    {SEMESTERS.map((semester) => (
+                      <option key={semester} value={semester}>
+                        Semester {semester}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <div className="h-px bg-white/[0.07]" />
+
+            <section>
+              <p className={sectionClass}>04 / Social profiles (optional)</p>
+
+              <div className="mt-5 space-y-5">
+                <div>
+                  <label className={labelClass} htmlFor="linkedin_url">
+                    LinkedIn URL <span className="text-slate-500">(optional)</span>
+                  </label>
+                  <input
+                    id="linkedin_url"
+                    name="linkedin_url"
+                    type="url"
+                    value={form.linkedin_url}
+                    onChange={handleChange}
+                    placeholder="https://www.linkedin.com/in/your-profile"
+                    className={inputClass}
+                  />
+                </div>
+
+                <div>
+                  <label className={labelClass} htmlFor="github_url">
+                    GitHub URL <span className="text-slate-500">(optional)</span>
+                  </label>
+                  <input
+                    id="github_url"
+                    name="github_url"
+                    type="url"
+                    value={form.github_url}
+                    onChange={handleChange}
+                    placeholder="https://github.com/your-username"
                     className={inputClass}
                   />
                 </div>
               </div>
+            </section>
+
+            <div className="h-px bg-white/[0.07]" />
+
+            <section>
+              <p className={sectionClass}>05 / About you</p>
 
               <div className="mt-5">
-                <label
-                  className="mb-2 block text-sm font-medium text-slate-300"
-                  htmlFor="bio"
-                >
-                  Short bio
+                <label className={labelClass} htmlFor="bio">
+                  Description / Bio *
                 </label>
-
                 <textarea
                   id="bio"
                   name="bio"
                   value={form.bio}
                   onChange={handleChange}
+                  required
+                  maxLength={200}
                   rows={4}
                   placeholder="Tell us about your interests, skills, and what excites you..."
                   className={`${inputClass} resize-y`}
                 />
-
-                <p className="mt-2 text-xs text-slate-500">
-                  Keep it authentic. Tell the team a little about yourself.
+                <p className="mt-2 text-right text-xs text-slate-500">
+                  {form.bio.length}/200 characters
                 </p>
               </div>
             </section>
@@ -463,18 +560,13 @@ export default function RegisterPage() {
             <div className="h-px bg-white/[0.07]" />
 
             <section>
-              <p className="mb-5 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">
-                03 / Your profile
-              </p>
+              <p className={sectionClass}>06 / Profile picture</p>
 
-              <label
-                className="mb-2 block text-sm font-medium text-slate-300"
-                htmlFor="profile-photo"
-              >
-                Profile photo <span className="text-cyan-400">*</span>
+              <label className={`${labelClass} mt-5`} htmlFor="profile-photo">
+                Profile picture *
               </label>
 
-              <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-5 transition hover:border-cyan-400/30 sm:p-6">
+              <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.02] p-5 sm:p-6">
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                   <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-[#101827]">
                     {photoPreview ? (
@@ -485,9 +577,7 @@ export default function RegisterPage() {
                       />
                     ) : (
                       <div className="text-center">
-                        <span className="text-3xl text-cyan-300">
-                          ＋
-                        </span>
+                        <span className="text-3xl text-cyan-300">＋</span>
                         <p className="mt-1 text-[10px] text-slate-500">
                           PREVIEW
                         </p>
@@ -496,15 +586,11 @@ export default function RegisterPage() {
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-white">
-                      Upload your profile photo
-                    </p>
-
+                    <p className="font-medium">Upload your profile picture</p>
                     <p className="mt-1 text-sm leading-6 text-slate-400">
-                      Choose a JPEG, PNG, or WebP image. Your photo will
-                      be converted to WebP before submission.
+                      JPEG, PNG, or WebP. Your image will be converted
+                      to WebP before submission.
                     </p>
-
                     <input
                       id="profile-photo"
                       type="file"
@@ -531,22 +617,59 @@ export default function RegisterPage() {
 
                 {converting && (
                   <p role="status" className="mt-4 text-sm text-cyan-300">
-                    <span className="mr-2 inline-block animate-spin">
-                      ◌
-                    </span>
+                    <span className="mr-2 inline-block animate-spin">◌</span>
                     Converting your photo to WebP...
                   </p>
                 )}
 
-                {photoPreview && photo && (
+                {photo && (
                   <p className="mt-4 text-xs text-emerald-300">
-                    ✓ Photo ready ·{" "}
-                    {photo.size < 1024
-                      ? `${photo.size} bytes`
-                      : `${(photo.size / 1024).toFixed(1)} KB`}
+                    ✓ Photo ready · {(photo.size / 1024).toFixed(1)} KB
                   </p>
                 )}
               </div>
+            </section>
+
+            <div className="h-px bg-white/[0.07]" />
+
+            <section>
+              <p className={sectionClass}>07 / Live member-card preview</p>
+              <div className="mt-5 overflow-hidden rounded-2xl border border-cyan-400/20 bg-[#080f1b] p-5">
+                <div className="flex items-center gap-4">
+                  <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#101827]">
+                    {photoPreview ? (
+                      <img
+                        src={photoPreview}
+                        alt="Live member preview"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-2xl text-cyan-300">
+                        ✳
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="break-words text-lg font-semibold">
+                      {form.full_name || "Your name"}
+                    </h3>
+                    <p className="mt-1 text-sm text-cyan-300">
+                      {form.position || "Position"}
+                      {form.domain ? ` · ${form.domain}` : ""}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {form.branch || "Branch"}
+                      {form.semester ? ` · Semester ${form.semester}` : ""}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-slate-400">
+                  {form.bio || "Your short bio will appear here."}
+                </p>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                Preview only. Your profile appears publicly after admin approval.
+              </p>
             </section>
 
             {message && (
@@ -569,18 +692,14 @@ export default function RegisterPage() {
                 : converting
                   ? "Preparing your photo..."
                   : "Submit application"}
-
               {!submitting && !converting && (
-                <span className="transition group-hover:translate-x-1">
-                  →
-                </span>
+                <span className="transition group-hover:translate-x-1">→</span>
               )}
             </button>
 
             <p className="text-center text-xs leading-6 text-slate-500">
-              By submitting, your application will be sent for admin
-              review. Your profile will appear on the team page only
-              after approval.
+              Your application will be sent for admin review. Your profile
+              will appear on the team page only after approval.
             </p>
           </div>
         </form>
@@ -589,7 +708,6 @@ export default function RegisterPage() {
           <a href="/" className="transition hover:text-cyan-300">
             <span className="text-cyan-400">←</span> Back to home
           </a>
-
           <p>© 2026 The Embrione · PES University</p>
         </footer>
       </div>

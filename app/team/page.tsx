@@ -9,6 +9,10 @@ type Member = {
   full_name: string;
   domain: string;
   position: string;
+  branch: string | null;
+  semester: number | null;
+  linkedin_url: string | null;
+  github_url: string | null;
   bio: string | null;
   image_url: string | null;
   created_at: string;
@@ -68,7 +72,7 @@ export default function TeamPage() {
       }
     }
 
-    loadMembers();
+    void loadMembers();
 
     return () => {
       cancelled = true;
@@ -97,6 +101,11 @@ export default function TeamPage() {
       (positionFilter === "All" || member.position === positionFilter)
   );
 
+  function clearFilters() {
+    setDomainFilter("All");
+    setPositionFilter("All");
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#070b14] text-white">
       {/* Ambient background */}
@@ -119,10 +128,7 @@ export default function TeamPage() {
           </a>
 
           <div className="flex items-center gap-3 sm:gap-6">
-            <a
-              href="/team"
-              className="text-sm font-medium text-cyan-300"
-            >
+            <a href="/team" className="text-sm font-medium text-cyan-300">
               Our team
             </a>
             <a
@@ -225,10 +231,8 @@ export default function TeamPage() {
 
           {(domainFilter !== "All" || positionFilter !== "All") && (
             <button
-              onClick={() => {
-                setDomainFilter("All");
-                setPositionFilter("All");
-              }}
+              type="button"
+              onClick={clearFilters}
               className="mt-4 text-sm text-cyan-300 transition hover:text-cyan-200"
             >
               ✕ Clear all filters
@@ -254,7 +258,9 @@ export default function TeamPage() {
                 <div className="mt-2 h-3 w-4/5 rounded bg-white/[0.05]" />
               </div>
             ))}
-            <span className="sr-only">Loading approved team members...</span>
+            <span className="sr-only">
+              Loading approved team members...
+            </span>
           </div>
         )}
 
@@ -274,6 +280,7 @@ export default function TeamPage() {
               {error}
             </p>
             <button
+              type="button"
               onClick={() => window.location.reload()}
               className="mt-5 rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-[#07111b] transition hover:bg-cyan-300"
             >
@@ -298,10 +305,8 @@ export default function TeamPage() {
             </p>
             {(domainFilter !== "All" || positionFilter !== "All") && (
               <button
-                onClick={() => {
-                  setDomainFilter("All");
-                  setPositionFilter("All");
-                }}
+                type="button"
+                onClick={clearFilters}
                 className="mt-5 rounded-xl border border-cyan-400/30 px-5 py-3 text-sm font-medium text-cyan-300 transition hover:bg-cyan-400/10"
               >
                 Reset filters
@@ -343,6 +348,7 @@ export default function TeamPage() {
                   >
                     <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent opacity-0 transition group-hover:opacity-100" />
 
+                    {/* Profile photo */}
                     <div className="flex items-start justify-between gap-3">
                       {member.photoUrl ? (
                         <img
@@ -363,6 +369,7 @@ export default function TeamPage() {
                       />
                     </div>
 
+                    {/* Member identity */}
                     <div className="mt-6">
                       <h2 className="break-words text-lg font-semibold tracking-tight text-white transition group-hover:text-cyan-50">
                         {member.full_name}
@@ -379,6 +386,24 @@ export default function TeamPage() {
                       </div>
                     </div>
 
+                    {/* Branch and semester */}
+                    {(member.branch || member.semester != null) && (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {member.branch && (
+                          <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-xs text-slate-300">
+                            {member.branch}
+                          </span>
+                        )}
+
+                        {member.semester != null && (
+                          <span className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-xs text-slate-300">
+                            Semester {member.semester}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Bio */}
                     {member.bio ? (
                       <p className="mt-5 whitespace-pre-wrap break-words text-sm leading-6 text-slate-400">
                         {member.bio}
@@ -389,6 +414,36 @@ export default function TeamPage() {
                       </p>
                     )}
 
+                    {/* Social profile links */}
+                    {(member.linkedin_url || member.github_url) && (
+                      <div className="mt-5 flex flex-wrap gap-3">
+                        {member.linkedin_url && (
+                          <a
+                            href={member.linkedin_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`${member.full_name}'s LinkedIn profile (opens in a new tab)`}
+                            className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/20 bg-cyan-400/[0.05] px-3 py-2 text-xs font-medium text-cyan-300 transition hover:border-cyan-400/40 hover:bg-cyan-400/10"
+                          >
+                            LinkedIn <span aria-hidden="true">↗</span>
+                          </a>
+                        )}
+
+                        {member.github_url && (
+                          <a
+                            href={member.github_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={`${member.full_name}'s GitHub profile (opens in a new tab)`}
+                            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-white"
+                          >
+                            GitHub <span aria-hidden="true">↗</span>
+                          </a>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Card footer */}
                     <div className="mt-auto pt-6">
                       <div className="h-px bg-gradient-to-r from-cyan-400/20 via-white/[0.06] to-transparent" />
                       <p className="mt-4 text-[10px] font-medium uppercase tracking-[0.2em] text-slate-600">

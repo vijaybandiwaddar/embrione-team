@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -11,6 +12,11 @@ type Application = {
   email: string;
   domain: string;
   position: string;
+  srn: string | null;
+  linkedin_url: string | null;
+  github_url: string | null;
+  branch: string | null;
+  semester: number | null;
   bio: string | null;
   image_url: string | null;
   status: "pending" | "approved" | "rejected";
@@ -34,7 +40,7 @@ export default function AdminPage() {
     const { data, error } = await supabase
       .from("team_members")
       .select(
-        "id, full_name, email, domain, position, bio, image_url, status, created_at"
+        "id, full_name, email, domain, position, srn, linkedin_url, github_url, branch, semester, bio, image_url, status, created_at"
       )
       .order("created_at", { ascending: false });
 
@@ -98,7 +104,7 @@ export default function AdminPage() {
       }
     }
 
-    checkExistingSession();
+    void checkExistingSession();
 
     return () => {
       active = false;
@@ -178,6 +184,72 @@ export default function AdminPage() {
     }
   }
 
+  async function deleteApplication(app: Application) {
+    const confirmed = window.confirm(
+      `Permanently delete ${app.full_name}'s profile?\n\nThis action cannot be undone. The application and its uploaded photo will be removed where permissions allow.`
+    );
+
+    if (!confirmed) return;
+
+    setWorkingId(app.id);
+    setMessage("");
+
+    try {
+      // Delete the application first. Supabase RLS must authorize this.
+      const { data: deleted, error } = await supabase
+        .from("team_members")
+        .delete()
+        .eq("id", app.id)
+        .select("id")
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!deleted) {
+        throw new Error(
+          "Profile was not deleted. Check admin permissions and try again."
+        );
+      }
+
+      // image_url stores the Storage object path, not its signed URL.
+      if (app.image_url) {
+        const { error: photoError } = await supabase.storage
+          .from("team-photos")
+          .remove([app.image_url]);
+
+        if (photoError) {
+          console.error(
+            "Profile photo cleanup failed:",
+            photoError.message
+          );
+
+          setApplications((current) =>
+            current.filter((item) => item.id !== app.id)
+          );
+
+          setMessage(
+            "Profile deleted, but its photo could not be removed. Check Storage permissions."
+          );
+          return;
+        }
+      }
+
+      setApplications((current) =>
+        current.filter((item) => item.id !== app.id)
+      );
+
+      setMessage(`Profile for ${app.full_name} deleted successfully.`);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not delete this profile."
+      );
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
   async function handleLogout() {
     const { error } = await supabase.auth.signOut();
 
@@ -190,6 +262,7 @@ export default function AdminPage() {
     setApplications([]);
     setEmail("");
     setPassword("");
+    setFilter("all");
     setMessage("You have been signed out.");
   }
 
@@ -639,6 +712,71 @@ export default function AdminPage() {
                           </div>
                         </div>
 
+                        {/* Additional registration details */}
+                        <div className="mt-4 grid gap-3 rounded-xl border border-white/[0.06] bg-black/10 p-4 sm:grid-cols-2">
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                              SRN
+                            </p>
+                            <p className="mt-1 break-all text-sm text-slate-300">
+                              {app.srn || "Not provided"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                              Branch
+                            </p>
+                            <p className="mt-1 text-sm text-slate-300">
+                              {app.branch || "Not provided"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                              Semester
+                            </p>
+                            <p className="mt-1 text-sm text-slate-300">
+                              {app.semester ?? "Not provided"}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                              Profile links
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-3 text-sm">
+                              {app.linkedin_url && (
+                                <a
+                                  href={app.linkedin_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-cyan-300 hover:text-cyan-200"
+                                >
+                                  LinkedIn ↗
+                                </a>
+                              )}
+
+                              {app.github_url && (
+                                <a
+                                  href={app.github_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-cyan-300 hover:text-cyan-200"
+                                >
+                                  GitHub ↗
+                                </a>
+                              )}
+
+                              {!app.linkedin_url && !app.github_url && (
+                                <span className="text-slate-500">
+                                  No links provided
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
                         {app.bio && (
                           <div className="mt-5 rounded-xl border border-white/[0.06] bg-black/10 p-4">
                             <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -704,6 +842,18 @@ export default function AdminPage() {
                             This application has already been reviewed.
                           </div>
                         )}
+
+                        {/* Delete profile */}
+                        <button
+                          type="button"
+                          disabled={workingId === app.id}
+                          onClick={() => deleteApplication(app)}
+                          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/25 bg-red-400/[0.05] px-4 py-3 text-sm font-semibold text-red-300 transition hover:bg-red-400/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {workingId === app.id
+                            ? "Working..."
+                            : "Delete Profile"}
+                        </button>
                       </div>
                     </article>
                   ))}
@@ -717,16 +867,10 @@ export default function AdminPage() {
         <footer className="flex flex-col gap-3 border-t border-white/[0.08] py-6 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
           <p>© 2026 The Embrione · PES University</p>
           <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="transition hover:text-cyan-300"
-            >
+            <Link href="/" className="transition hover:text-cyan-300">
               Home
             </Link>
-            <Link
-              href="/team"
-              className="transition hover:text-cyan-300"
-            >
+            <Link href="/team" className="transition hover:text-cyan-300">
               Meet the Team
             </Link>
           </div>
